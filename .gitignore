@@ -1,0 +1,19 @@
+# Python Bytecode
+*.pyc
+*.pyo
+__pycache__/
+
+# Virtual environment
+venv/
+ENV/
+env/
+
+# .env file containing sensitive keys
+.env
+
+# IDE files (e.g., VS Code, PyCharm)
+.vscode/
+.idea/
+
+# Other potential sensitive files
+*.log
