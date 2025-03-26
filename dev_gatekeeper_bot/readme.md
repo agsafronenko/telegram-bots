@@ -88,8 +88,10 @@ CODING_QUESTIONS = [
 
 ## Running the Bot
 
+Run this command from the project's root directory:
+
 ```bash
-python main.py
+python3 -m src.main
 ```
 
 ## Deployment Considerations
