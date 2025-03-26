@@ -18,6 +18,7 @@ This Telegram bot implements a gamification ranking system through a karma/reput
 - Each appreciation increases the user's karma by a configurable amount
 - Daily limit prevents karma point farming
 - Users can check their rank and view the leaderboard
+- The bot prevents self-karma points
 
 ## Prerequisites
 
@@ -90,13 +91,13 @@ python3 bot.py
 ## Bot Commands
 
 - `/start`: Initialize the bot and welcome message
-- `/ranks` or `/ranking`: Show all-time top 10 users
+- `/ranks` or `/ranking` and similar derived words: Show all-time top 10 users
 - `/myrank`: Check your personal ranking and karma points
 
 ## Supported Appreciation Words
 
 The bot recognizes most popular "thank" words and emojis, including:
-- "thank you", "thanks", "thx"
+- "thank you", "thanks", "thx", "ty", etc
 - Appreciation emojis like 👍, ❤️, 🙏, 💯
 
 ## Deployment Considerations
@@ -108,4 +109,3 @@ The bot recognizes most popular "thank" words and emojis, including:
 
 - Keep your bot token secret
 - Use environment variables
-- The bot prevents self-karma points
