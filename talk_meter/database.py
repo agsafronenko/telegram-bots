@@ -65,7 +65,8 @@ class DatabaseManager:
             
             '''CREATE TABLE IF NOT EXISTS notifications (
                 user_id INTEGER PRIMARY KEY,
-                is_subscribed INTEGER DEFAULT 1 CHECK(is_subscribed IN (0, 1))
+                is_subscribed INTEGER DEFAULT 1 CHECK(is_subscribed IN (0, 1)),
+                subscribed_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )''',
             
             '''CREATE INDEX IF NOT EXISTS idx_messages_user_timestamp 
@@ -243,8 +244,8 @@ class DatabaseManager:
                 cursor = conn.cursor()
                 cursor.execute('''
                     INSERT OR REPLACE INTO notifications 
-                    (user_id, is_subscribed, subscribed_at)
-                    VALUES (?, ?, CURRENT_TIMESTAMP)
+                    (user_id, is_subscribed)
+                    VALUES (?, ?)
                 ''', (user_id, 1 if subscribe else 0))
                 conn.commit()
         except sqlite3.Error as e:
