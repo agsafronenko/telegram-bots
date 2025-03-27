@@ -143,7 +143,7 @@ class DatabaseManager:
         """
         Generate leaderboard for different periods.
         
-        :param period: Time period (day/week/month/all_time)
+        :param period: Time period (daily/weekly/monthly/all_time)
         :param limit: Number of top users to retrieve
         :return: List of (user_id, username, message_count)
         """
@@ -163,9 +163,9 @@ class DatabaseManager:
                 
                 # Period filtering
                 period_filters = {
-                    'day': 'WHERE m.timestamp >= date("now", "-1 day")',
-                    'week': 'WHERE m.timestamp >= date("now", "-7 days")',
-                    'month': 'WHERE m.timestamp >= date("now", "-1 month")',
+                    'daily': 'WHERE m.timestamp >= date("now", "-1 day")',
+                    'weekly': 'WHERE m.timestamp >= date("now", "-7 days")',
+                    'monthly': 'WHERE m.timestamp >= date("now", "-1 month")',
                     'all_time': ''
                 }
                 
@@ -192,7 +192,7 @@ class DatabaseManager:
         Get user's rank for a specific period.
         
         :param user_id: Telegram user ID
-        :param period: Time period (day/week/month/all_time)
+        :param period: Time period (daily/weekly/monthly/all_time)
         :return: User's rank or None
         """
         try:
@@ -201,9 +201,9 @@ class DatabaseManager:
                 
                 # Period filtering
                 period_filters = {
-                    'day': 'AND m.timestamp >= date("now", "-1 day")',
-                    'week': 'AND m.timestamp >= date("now", "-7 days")',
-                    'month': 'AND m.timestamp >= date("now", "-1 month")',
+                    'daily': 'AND m.timestamp >= date("now", "-1 day")',
+                    'weekly': 'AND m.timestamp >= date("now", "-7 days")',
+                    'monthly': 'AND m.timestamp >= date("now", "-1 month")',
                     'all_time': ''
                 }
                 

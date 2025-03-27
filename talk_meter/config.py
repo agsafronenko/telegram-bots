@@ -12,9 +12,9 @@ SPAM_THRESHOLD = {
 
 # Leaderboard Periods
 PERIODS = {
-    "day": "day",
-    "week": "week", 
-    "month": "month",
+    "daily": "daily",
+    "weekly": "weekly", 
+    "monthly": "monthly",
     "alltime": "all_time"
 }
 

@@ -69,18 +69,20 @@ class LeaderboardBot:
     async def start_command(self, update: Update, context):
         """Handle /start command."""
         await update.message.reply_text(
-            "Welcome to the Leaderboard Bot! 🏆\n"
+            "Welcome to the Talk Meter Bot! 🏆\n"
             "Track your messaging stats and compete with others.\n\n"
-            "📢 *Important:* To receive leaderboard notifications, you must start a private chat with this bot first. "
-            "Bots *cannot* message users unless they have interacted with them first.\n\n"
+
             "🔹 *Available Commands:*\n"
             "/rank - All-time ranking\n"
-            "/dayrank - Today's ranking\n"
-            "/weekrank - Weekly ranking\n"
-            "/monthrank - Monthly ranking\n"
+            "/dailyrank - Today's ranking\n"
+            "/weeklyrank - Weekly ranking\n"
+            "/monthlyrank - Monthly ranking\n"
             "/mystats - Your personal stats\n"
-            "/notifyme - Get leaderboard updates\n"
+            "/notifyme - Get leaderboard updates ***\n"
             "/stopnotify - Stop leaderboard notifications\n\n"
+
+            "📢 ***Important: To receive leaderboard notifications, you must start a private chat with this bot first. "
+            "Bots *cannot* message users unless they have interacted with them first.\n\n"
         )
 
     async def handle_message(self, update: Update, context):
@@ -128,26 +130,26 @@ class LeaderboardBot:
         )
         await update.message.reply_text(text=message, parse_mode='Markdown')
 
-    async def dayrank_command(self, update: Update, context):
+    async def dailyrank_command(self, update: Update, context):
         """Show daily leaderboard."""
         message = self.leaderboard_manager.get_leaderboard_message(
-            'day', 
+            'daily', 
             update.effective_user.id
         )
         await update.message.reply_text(text=message, parse_mode='Markdown')
 
-    async def weekrank_command(self, update: Update, context):
+    async def weeklyrank_command(self, update: Update, context):
         """Show weekly leaderboard."""
         message = self.leaderboard_manager.get_leaderboard_message(
-            'week', 
+            'weekly', 
             update.effective_user.id
         )
         await update.message.reply_text(text=message, parse_mode='Markdown')
 
-    async def monthrank_command(self, update: Update, context):
+    async def monthlyrank_command(self, update: Update, context):
         """Show monthly leaderboard."""
         message = self.leaderboard_manager.get_leaderboard_message(
-            'month', 
+            'monthly', 
             update.effective_user.id
         )
         await update.message.reply_text(text=message, parse_mode='Markdown')

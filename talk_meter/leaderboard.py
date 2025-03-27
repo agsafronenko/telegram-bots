@@ -49,9 +49,9 @@ class LeaderboardManager:
         
         # Get ranks for different periods
         ranks = {
-            "Daily": self.db_manager.get_user_rank(user_id, 'day'),
-            "Weekly": self.db_manager.get_user_rank(user_id, 'week'),
-            "Monthly": self.db_manager.get_user_rank(user_id, 'month'),
+            "Daily": self.db_manager.get_user_rank(user_id, 'daily'),
+            "Weekly": self.db_manager.get_user_rank(user_id, 'weekly'),
+            "Monthly": self.db_manager.get_user_rank(user_id, 'monthly'),
             "All-Time": self.db_manager.get_user_rank(user_id, 'all_time')
         }
         
