@@ -70,4 +70,7 @@ class NotificationManager:
                     text=notification_text
                 )
             except Exception as e:
-                print(f"Failed to send notification to {user_id}: {e}")
+                print(
+                    f"❌ Failed to send notification to {user_id}: {e}. "
+                    "This might be because the user hasn't started a private chat with the bot yet."
+                )

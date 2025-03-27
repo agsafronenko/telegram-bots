@@ -69,16 +69,18 @@ class LeaderboardBot:
     async def start_command(self, update: Update, context):
         """Handle /start command."""
         await update.message.reply_text(
-            "Welcome to the Leaderboard Bot! "
+            "Welcome to the Leaderboard Bot! 🏆\n"
             "Track your messaging stats and compete with others.\n\n"
-            "Available commands:\n"
+            "📢 *Important:* To receive leaderboard notifications, you must start a private chat with this bot first. "
+            "Bots *cannot* message users unless they have interacted with them first.\n\n"
+            "🔹 *Available Commands:*\n"
             "/rank - All-time ranking\n"
             "/dayrank - Today's ranking\n"
             "/weekrank - Weekly ranking\n"
             "/monthrank - Monthly ranking\n"
             "/mystats - Your personal stats\n"
             "/notifyme - Get leaderboard updates\n"
-            "/stopnotify - Stop leaderboard notifications"
+            "/stopnotify - Stop leaderboard notifications\n\n"
         )
 
     async def handle_message(self, update: Update, context):
@@ -167,25 +169,19 @@ class LeaderboardBot:
         await update.message.reply_text("You will no longer receive leaderboard update notifications.")
 
     async def start_periodic_checks(self):
-        """Start periodic leaderboard change checks."""
-        while True:
-            for period in PERIODS:
-                if period != 'alltime':
-                    await self.notification_manager.check_leaderboard_changes(period)
-            
-            # Check every hour
-            print("periodic check")
-            await asyncio.sleep(5)
+        """Perform a leaderboard check."""
+        for period in PERIODS:
+            if period != 'alltime':
+                await self.notification_manager.check_leaderboard_changes(period)
 
     def run(self):
         """Run the bot."""
-        # Setup handlers
         self.setup_handlers()
         
-        # Start periodic checks
+        # Run periodic checks
         self.application.job_queue.run_repeating(
             lambda context: asyncio.create_task(self.start_periodic_checks()), 
-            interval=5, 
+            interval=3600, 
             first=0
         )
         

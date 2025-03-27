@@ -65,8 +65,7 @@ class DatabaseManager:
             
             '''CREATE TABLE IF NOT EXISTS notifications (
                 user_id INTEGER PRIMARY KEY,
-                is_subscribed INTEGER DEFAULT 1 CHECK(is_subscribed IN (0, 1)),
-                subscribed_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                is_subscribed INTEGER DEFAULT 1 CHECK(is_subscribed IN (0, 1))
             )''',
             
             '''CREATE INDEX IF NOT EXISTS idx_messages_user_timestamp 
