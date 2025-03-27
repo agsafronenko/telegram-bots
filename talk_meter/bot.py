@@ -14,7 +14,8 @@ from telegram.ext import (
 from config import (
     DATABASE_PATH, 
     SPAM_THRESHOLD,
-    PERIODS
+    PERIODS,
+    NOTIFICATION_INTERVAL
 )
 from database import DatabaseManager
 from leaderboard import LeaderboardManager
@@ -183,7 +184,7 @@ class LeaderboardBot:
         # Run periodic checks
         self.application.job_queue.run_repeating(
             lambda context: asyncio.create_task(self.start_periodic_checks()), 
-            interval=3600, 
+            interval=NOTIFICATION_INTERVAL, 
             first=0
         )
         

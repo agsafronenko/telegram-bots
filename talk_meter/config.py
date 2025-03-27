@@ -20,3 +20,5 @@ PERIODS = {
 
 # Notification Settings
 MAX_NOTIFICATION_USERS = 1000  # Limit notifications to prevent excessive load
+# NOTIFICATION_INTERVAL = 60 * 60   # 1 hour in seconds
+NOTIFICATION_INTERVAL = 5   # 1 hour in seconds
