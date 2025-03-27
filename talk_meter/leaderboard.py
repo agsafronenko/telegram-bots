@@ -17,7 +17,18 @@ class LeaderboardManager:
             milestone for milestone in MILESTONES 
             if total_messages == milestone
         ]
-        
+
+        # Check and update highest all-time rank
+        current_rank = self.db_manager.get_user_rank(user_id, 'all_time')
+        total_messages, current_highest = self.db_manager.get_user_stats(user_id)
+
+        if current_rank is not None:
+            # Update if:
+            # 1. No previous highest rank (new user)
+            # 2. Current rank is better (lower) than previous best
+            if (current_highest is None) or (current_rank < current_highest):
+                self.db_manager.update_highest_rank(user_id, current_rank)
+
         return milestone_reached
 
     def get_leaderboard_message(self, period='all-time', user_id=None):
@@ -59,7 +70,7 @@ class LeaderboardManager:
         stats_message = [
             "🌟 Your Stats:",
             f"Total Messages: {total_messages}",
-            f"Highest Rank Achieved: {highest_rank or 'N/A'}",
+            f"Highest All-Time Rank Achieved: {highest_rank or 'N/A'}",
             "\nCurrent Rankings:"
         ]
         

@@ -50,7 +50,7 @@ class DatabaseManager:
                 user_id INTEGER PRIMARY KEY,
                 username TEXT NOT NULL,
                 total_messages INTEGER DEFAULT 0,
-                highest_rank INTEGER DEFAULT 0,
+                highest_rank INTEGER DEFAULT NULL,
                 last_message_time DATETIME DEFAULT CURRENT_TIMESTAMP,
                 first_message_time DATETIME DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(username)
@@ -135,7 +135,7 @@ class DatabaseManager:
                 ''', (user_id,))
                 
                 result = cursor.fetchone()
-                return (result['total_messages'], result['highest_rank']) if result else (0, 0)
+                return (result['total_messages'], result['highest_rank']) if result else (0, None)
         except sqlite3.Error as e:
             self.logger.error(f"Error retrieving user stats for {user_id}: {e}")
             return (0, 0)
@@ -192,6 +192,25 @@ class DatabaseManager:
             self.logger.error(f"Error generating leaderboard for {period}: {e}")
             return []
 
+    def update_highest_rank(self, user_id: int, new_rank: int) -> None:
+        """
+        Update the user's highest achieved rank.
+        
+        :param user_id: Telegram user ID
+        :param new_rank: New highest rank to set
+        """
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    UPDATE users 
+                    SET highest_rank = ?
+                    WHERE user_id = ?
+                ''', (new_rank, user_id))
+                conn.commit()
+        except sqlite3.Error as e:
+            self.logger.error(f"Error updating highest rank for user {user_id}: {e}")
+
     def get_user_rank(self, user_id: int, period: str = 'all_time') -> Optional[int]:
         """
         Get user's rank with first-to-count mechanism.
@@ -200,7 +219,6 @@ class DatabaseManager:
             with self._get_connection() as conn:
                 cursor = conn.cursor()
                 
-                # Period filtering
                 period_filters = {
                     'daily': 'AND m.timestamp >= date("now", "-1 day")',
                     'weekly': 'AND m.timestamp >= date("now", "-7 days")',
@@ -226,20 +244,25 @@ class DatabaseManager:
                     ),
                     ranked_messages AS (
                         SELECT 
-                            user_id, 
-                            username,
-                            message_count,
-                            first_message_time,
+                            um.user_id,  -- Qualified with alias
+                            um.username,
+                            um.message_count,
+                            um.first_message_time,
                             COUNT(DISTINCT other.message_count) + 1 AS base_rank,
-                            message_count_order
-                        FROM user_messages
-                        LEFT JOIN user_messages other ON other.message_count > user_messages.message_count
-                        GROUP BY user_id, username, message_count, first_message_time, message_count_order
+                            um.message_count_order
+                        FROM user_messages um  -- Main CTE aliased as 'um'
+                        LEFT JOIN user_messages other ON other.message_count > um.message_count
+                        GROUP BY 
+                            um.user_id, 
+                            um.username, 
+                            um.message_count, 
+                            um.first_message_time, 
+                            um.message_count_order
                     )
                     SELECT 
                         base_rank + (message_count_order - 1) AS final_rank
                     FROM ranked_messages 
-                    WHERE user_id = ?
+                    WHERE user_id = ?  -- Now unambiguous
                 '''
                 
                 cursor.execute(query, (user_id,))
