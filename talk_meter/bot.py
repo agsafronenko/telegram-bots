@@ -89,7 +89,12 @@ class LeaderboardBot:
     async def handle_message(self, update: Update, context):
         """Handle incoming messages with spam protection."""
         user = update.effective_user
+        chat = update.effective_chat
         current_time = datetime.now()
+
+        # Only process messages from group chats
+        if not chat or chat.type not in ['group', 'supergroup']:
+            return
         
         # Initialize or update user tracking
         if user.id not in self.user_message_track:
