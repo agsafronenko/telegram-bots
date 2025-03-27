@@ -142,59 +142,7 @@ class DatabaseManager:
 
     def get_leaderboard(self, period: str = 'all_time', limit: int = 10) -> List[Tuple[int, str, int]]:
         """
-        Generate leaderboard for different periods.
-        
-        :param period: Time period (daily/weekly/monthly/all_time)
-        :param limit: Number of top users to retrieve
-        :return: List of (user_id, username, message_count)
-        """
-        try:
-            with self._get_connection() as conn:
-                cursor = conn.cursor()
-                
-                # Base query
-                query = '''
-                    SELECT 
-                        u.user_id, 
-                        u.username, 
-                        COUNT(m.id) as message_count
-                    FROM users u
-                    JOIN messages m ON u.user_id = m.user_id
-                '''
-                
-                # Period filtering
-                period_filters = {
-                    'daily': 'WHERE m.timestamp >= date("now", "-1 day")',
-                    'weekly': 'WHERE m.timestamp >= date("now", "-7 days")',
-                    'monthly': 'WHERE m.timestamp >= date("now", "-1 month")',
-                    'all_time': ''
-                }
-                
-                query += period_filters.get(period, '')
-                
-                # Finalize query
-                query += '''
-                    GROUP BY u.user_id, u.username
-                    ORDER BY message_count DESC
-                    LIMIT ?
-                '''
-                
-                cursor.execute(query, (limit,))
-                return [
-                    (row['user_id'], row['username'], row['message_count']) 
-                    for row in cursor.fetchall()
-                ]
-        except sqlite3.Error as e:
-            self.logger.error(f"Error generating leaderboard for {period}: {e}")
-            return []
-
-    def get_user_rank(self, user_id: int, period: str = 'all_time') -> Optional[int]:
-        """
-        Get user's rank for a specific period.
-        
-        :param user_id: Telegram user ID
-        :param period: Time period (daily/weekly/monthly/all_time)
-        :return: User's rank or None
+        Generate leaderboard with strict first-to-count priority.
         """
         try:
             with self._get_connection() as conn:
@@ -209,25 +157,94 @@ class DatabaseManager:
                 }
                 
                 query = f'''
-                    WITH ranked_users AS (
+                    WITH user_messages AS (
+                        SELECT 
+                            u.user_id, 
+                            u.username, 
+                            COUNT(m.id) as message_count,
+                            MAX(m.timestamp) as last_count_time,  -- Changed to last message timestamp
+                            ROW_NUMBER() OVER (
+                                PARTITION BY COUNT(m.id) 
+                                ORDER BY MAX(m.timestamp) ASC  -- Order by earliest timestamp to reach count
+                            ) as message_count_order
+                        FROM users u
+                        JOIN messages m ON u.user_id = m.user_id
+                        WHERE 1=1 {period_filters.get(period, '')}
+                        GROUP BY u.user_id, u.username
+                    )
+                    SELECT 
+                        user_id, 
+                        username, 
+                        message_count
+                    FROM user_messages
+                    ORDER BY 
+                        message_count DESC, 
+                        last_count_time ASC  -- Tiebreaker: who reached the count first
+                    LIMIT ?
+                '''
+                
+                cursor.execute(query, (limit,))
+                return [
+                    (row['user_id'], row['username'], row['message_count']) 
+                    for row in cursor.fetchall()
+                ]
+        except sqlite3.Error as e:
+            self.logger.error(f"Error generating leaderboard for {period}: {e}")
+            return []
+
+    def get_user_rank(self, user_id: int, period: str = 'all_time') -> Optional[int]:
+        """
+        Get user's rank with first-to-count mechanism.
+        """
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                
+                # Period filtering
+                period_filters = {
+                    'daily': 'AND m.timestamp >= date("now", "-1 day")',
+                    'weekly': 'AND m.timestamp >= date("now", "-7 days")',
+                    'monthly': 'AND m.timestamp >= date("now", "-1 month")',
+                    'all_time': ''
+                }
+                
+                query = f'''
+                    WITH user_messages AS (
                         SELECT 
                             u.user_id, 
                             u.username,
                             COUNT(m.id) as message_count,
-                            DENSE_RANK() OVER (ORDER BY COUNT(m.id) DESC) as rank
+                            MIN(m.timestamp) as first_message_time,
+                            ROW_NUMBER() OVER (
+                                PARTITION BY COUNT(m.id) 
+                                ORDER BY MIN(m.timestamp)
+                            ) as message_count_order
                         FROM users u
                         LEFT JOIN messages m ON u.user_id = m.user_id
                         WHERE 1=1 {period_filters.get(period, '')}
                         GROUP BY u.user_id, u.username
+                    ),
+                    ranked_messages AS (
+                        SELECT 
+                            user_id, 
+                            username,
+                            message_count,
+                            first_message_time,
+                            COUNT(DISTINCT other.message_count) + 1 AS base_rank,
+                            message_count_order
+                        FROM user_messages
+                        LEFT JOIN user_messages other ON other.message_count > user_messages.message_count
+                        GROUP BY user_id, username, message_count, first_message_time, message_count_order
                     )
-                    SELECT rank 
-                    FROM ranked_users 
+                    SELECT 
+                        base_rank + (message_count_order - 1) AS final_rank
+                    FROM ranked_messages 
                     WHERE user_id = ?
                 '''
                 
                 cursor.execute(query, (user_id,))
                 result = cursor.fetchone()
-                return result['rank'] if result else None
+                return result[0] if result else None
         except sqlite3.Error as e:
             self.logger.error(f"Error getting user rank for {user_id} in {period}: {e}")
             return None
