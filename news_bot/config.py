@@ -17,3 +17,15 @@ class Config:
     DEFAULT_COUNTRY = 'us'
     DEFAULT_CATEGORY = 'general'
     MAX_ARTICLES = 5
+    
+    # Configurable Categories and Countries
+    NEWS_CATEGORIES = [
+        ['General', 'Business'],
+        ['Technology', 'Science'],
+        ['Sports', 'Entertainment']
+    ]
+    
+    NEWS_COUNTRIES = [
+        ['US', 'GB', 'CA'],
+        ['IN', 'AU', 'JP']
+    ]
