@@ -1,5 +1,5 @@
-import sqlite3
 import logging
+import sqlite3
 from datetime import datetime, timedelta
 from typing import List, Tuple, Optional, Dict, Any
 
@@ -12,14 +12,14 @@ class DatabaseManager:
         """
         self.db_path = db_path
         
-        # Configure logging
+        # Configure logging to track database events and errors
         logging.basicConfig(
             level=logging.INFO,
             format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
         )
         self.logger = logging.getLogger(__name__)
         
-        # Ensure database is set up
+        # Ensure database is set up by creating necessary tables
         try:
             self._create_tables()
         except Exception as e:
@@ -34,7 +34,7 @@ class DatabaseManager:
         """
         try:
             conn = sqlite3.connect(self.db_path)
-            conn.row_factory = sqlite3.Row
+            conn.row_factory = sqlite3.Row # Enables dictionary-like access to row data
             return conn
         except sqlite3.Error as e:
             self.logger.error(f"Connection creation failed: {e}")
@@ -46,6 +46,7 @@ class DatabaseManager:
         Uses a comprehensive schema with additional constraints.
         """
         create_queries = [
+            # Users table to store user details and statistics
             '''CREATE TABLE IF NOT EXISTS users (
                 user_id INTEGER PRIMARY KEY,
                 username TEXT NOT NULL,
@@ -55,20 +56,20 @@ class DatabaseManager:
                 first_message_time DATETIME DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(username)
             )''',
-            
+            # Messages table to store individual message logs with timestamps
             '''CREATE TABLE IF NOT EXISTS messages (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER NOT NULL,
                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY(user_id) REFERENCES users(user_id)
             )''',
-            
+             # Notifications table to track user subscription status
             '''CREATE TABLE IF NOT EXISTS notifications (
                 user_id INTEGER PRIMARY KEY,
                 is_subscribed INTEGER DEFAULT 1 CHECK(is_subscribed IN (0, 1)),
                 subscribed_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )''',
-            
+            # Index for optimizing queries on messages table
             '''CREATE INDEX IF NOT EXISTS idx_messages_user_timestamp 
             ON messages(user_id, timestamp)'''
         ]
@@ -95,7 +96,7 @@ class DatabaseManager:
             with self._get_connection() as conn:
                 cursor = conn.cursor()
                 
-                # Upsert user 
+                # Insert or update user data while tracking total messages sent
                 cursor.execute('''
                     INSERT INTO users (
                         user_id, 
@@ -108,7 +109,7 @@ class DatabaseManager:
                         last_message_time = CURRENT_TIMESTAMP
                 ''', (user_id, username or str(user_id)))
                 
-                # Log message
+                # Insert a new message log
                 cursor.execute(
                     'INSERT INTO messages (user_id) VALUES (?)', 
                     (user_id,)
@@ -311,21 +312,3 @@ class DatabaseManager:
         except sqlite3.Error as e:
             self.logger.error(f"Error retrieving notification users: {e}")
             return []
-
-    def cleanup_old_messages(self, days: int = 90) -> None:
-        """
-        Remove messages older than specified number of days.
-        
-        :param days: Number of days to retain messages
-        """
-        try:
-            with self._get_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute('''
-                    DELETE FROM messages 
-                    WHERE timestamp < date('now', ?)
-                ''', (f'-{days} days',))
-                conn.commit()
-                self.logger.info(f"Cleaned up messages older than {days} days")
-        except sqlite3.Error as e:
-            self.logger.error(f"Error cleaning up old messages: {e}")

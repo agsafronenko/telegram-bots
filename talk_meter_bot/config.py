@@ -2,7 +2,7 @@
 DATABASE_PATH = "leaderboard.db"
 
 # Leaderboard Settings
-MILESTONES = [65, 70, 75]
+MILESTONES = [1000, 5000, 10000]
 
 # Anti-Spam Configuration
 SPAM_THRESHOLD = {
@@ -20,5 +20,8 @@ PERIODS = {
 
 # Notification Settings
 MAX_NOTIFICATION_USERS = 1000  # Limit notifications to prevent excessive load
-# NOTIFICATION_INTERVAL = 60 * 60   # 1 hour in seconds
-NOTIFICATION_INTERVAL = 5   # 1 hour in seconds
+NOTIFICATION_INTERVAL = 60 * 60   # 1 hour in seconds
+
+
+
+
