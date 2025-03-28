@@ -49,6 +49,13 @@ source venv/bin/activate  # On Windows, use `venv\Scripts\activate`
 pip install python-telegram-bot python-dotenv
 ```
 
+## Getting a Telegram Bot Token
+
+1. Open Telegram and search for the `BotFather`
+2. Start a chat and send `/newbot`
+3. Follow the prompts to name your bot
+4. BotFather will provide you with a token
+
 ## Configuration
 
 1. Create a `.env` file in the project root
