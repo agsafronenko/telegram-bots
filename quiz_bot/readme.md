@@ -95,8 +95,6 @@ Edit `config.py` to modify:
 ## Deployment Considerations
 
 - Use a server or cloud platform for 24/7 operation
-- Ensure stable internet connection
-- Monitor API request limits
 
 ## API Used
 
