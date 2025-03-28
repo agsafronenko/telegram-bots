@@ -17,3 +17,7 @@ env/
 
 # Other potential sensitive files
 *.log
+
+# Databases:
+*.db
+
