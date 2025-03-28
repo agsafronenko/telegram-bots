@@ -2,7 +2,9 @@ import os
 import random
 import html
 import logging
+import json
 from typing import Dict, List, Any
+import asyncio
 
 import requests
 from dotenv import load_dotenv
@@ -33,6 +35,29 @@ class TriviaBot:
         self.token = token
         self.current_games: Dict[int, Dict[str, Any]] = {}
         self.categories = self.fetch_trivia_categories()
+        self.best_scores_file = 'best_scores.json'
+        self.best_scores = self.load_best_scores()
+        self.ANSWER_TIMEOUT = 15  # 15 seconds to answer
+
+    def load_best_scores(self) -> Dict[str, int]:
+        """Load best scores from a JSON file."""
+        try:
+            with open(self.best_scores_file, 'r') as f:
+                return json.load(f)
+        except FileNotFoundError:
+            return {}
+
+    def save_best_scores(self):
+        """Save best scores to a JSON file."""
+        try:
+            with open(self.best_scores_file, 'w') as f:
+                json.dump(self.best_scores, f)
+        except Exception as e:
+            logger.error(f"Error saving best scores: {e}")
+
+    def get_best_score_key(self, game_state: Dict[str, Any]) -> str:
+        """Generate a unique key for best score tracking."""
+        return f"{game_state['difficulty']}_{game_state['category']}_{game_state['game_length']}"
 
     def fetch_trivia_categories(self) -> Dict[int, str]:
         """Fetch available trivia categories from Open Trivia API."""
@@ -82,7 +107,8 @@ class TriviaBot:
                             'question': html.unescape(question['question']),
                             'answers': [html.unescape(ans) for ans in answers],
                             'correct_answer': html.unescape(question['correct_answer']),
-                            'category': html.unescape(question['category'])
+                            'category': html.unescape(question['category']),
+                            'answered': False
                         })
                     
                     return processed_questions
@@ -203,7 +229,9 @@ class TriviaBot:
             'game_length': game_length,
             'questions': questions,
             'current_question_index': 0,
-            'score': 0
+            'unanswered_questions': list(range(game_length)),
+            'score': 0,
+            'timeout_task': None
         }
 
         # Send first question
@@ -211,54 +239,104 @@ class TriviaBot:
 
         return ConversationHandler.END
 
+    async def handle_question_timeout(self, update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int) -> None:
+        """Handle question timeout."""
+        if user_id not in self.current_games:
+            return
+
+        game_state = self.current_games[user_id]
+        current_q = game_state['questions'][game_state['current_question_index']]
+
+        # Mark question as answered (even though it's a timeout)
+        current_q['answered'] = True
+
+        # Remove the current question index from unanswered questions
+        if game_state['current_question_index'] in game_state['unanswered_questions']:
+            game_state['unanswered_questions'].remove(game_state['current_question_index'])
+
+        # Send timeout message
+        if update.callback_query:
+            message_method = update.callback_query.message.reply_text
+        else:
+            message_method = update.message.reply_text
+
+        await message_method(
+            f"⏰ Time's up! You didn't answer in time.\n"
+            f"The correct answer was: {current_q['correct_answer']}\n"
+            f"Current Score: {game_state['score']}/{game_state['current_question_index'] + 1}"
+        )
+
+        # Move to next question
+        game_state['current_question_index'] += 1
+
+        # Send next question or end game
+        await self.send_next_question(update, context)
+
     async def send_next_question(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Send the next trivia question."""
         # Correctly extract user ID from either update or callback query
         if update.callback_query:
             user_id = update.callback_query.from_user.id
+            current_message = update.callback_query.message
         else:
             user_id = update.effective_user.id
+            current_message = update.message
 
         # Check if game exists for this user
         if user_id not in self.current_games:
-            if update.callback_query:
-                await update.callback_query.message.reply_text("No active game. Start a new quiz with /start")
-            else:
-                await update.message.reply_text("No active game. Start a new quiz with /start")
+            await current_message.reply_text("No active game. Start a new quiz with /start")
             return
 
         game_state = self.current_games[user_id]
 
-        # Check if game is complete
-        if game_state['current_question_index'] >= game_state['game_length']:
+        # Find next unanswered question
+        if not game_state['unanswered_questions']:
             await self.end_game(update, context)
             return
 
-        # Get current question
+        # Set current question index to the next unanswered question
+        game_state['current_question_index'] = game_state['unanswered_questions'][0]
         current_q = game_state['questions'][game_state['current_question_index']]
 
         # Create inline keyboard with answer options
         keyboard = [
-            [InlineKeyboardButton(answer, callback_data=str(i)) 
-             for i, answer in enumerate(current_q['answers'])]
+            [InlineKeyboardButton(
+                answer, 
+                callback_data=f"{game_state['current_question_index']}_{i}", 
+                # Disable button if question has already been answered
+                callback_game=True if current_q['answered'] else None
+            ) for i, answer in enumerate(current_q['answers'])]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
 
-        # Determine the appropriate way to send the message
+        # Send a new message instead of replying
         if update.callback_query:
-            message = await update.callback_query.message.reply_text(
+            await current_message.chat.send_message(
                 f"Question {game_state['current_question_index'] + 1}/{game_state['game_length']}\n"
                 f"Category: {current_q['category']}\n\n"
                 f"{current_q['question']}",
                 reply_markup=reply_markup
             )
         elif update.message:
-            message = await update.message.reply_text(
+            await current_message.chat.send_message(
                 f"Question {game_state['current_question_index'] + 1}/{game_state['game_length']}\n"
                 f"Category: {current_q['category']}\n\n"
                 f"{current_q['question']}",
                 reply_markup=reply_markup
             )
+
+        # Set up timeout
+        game_state['timeout_task'] = asyncio.create_task(
+            self.set_timeout(update, context, user_id)
+        )
+
+    async def set_timeout(self, update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int) -> None:
+        """Set a timeout for answering the question."""
+        await asyncio.sleep(self.ANSWER_TIMEOUT)
+        
+        # Check if game still exists
+        if user_id in self.current_games:
+            await self.handle_question_timeout(update, context, user_id)
 
     async def answer_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle answer selection."""
@@ -272,10 +350,25 @@ class TriviaBot:
             await query.message.reply_text("No active game. Start a new quiz with /start")
             return
 
-        # Get current game state and question details
+        # Cancel timeout task if it exists
         game_state = self.current_games[user_id]
-        current_q = game_state['questions'][game_state['current_question_index']]
-        selected_answer = current_q['answers'][int(query.data)]
+        if game_state['timeout_task']:
+            game_state['timeout_task'].cancel()
+
+        # Parse callback data to get question index and answer index
+        callback_data = query.data.split('_')
+        question_index = int(callback_data[0])
+        answer_index = int(callback_data[1])
+
+        # Get current question details
+        current_q = game_state['questions'][question_index]
+        
+        # Prevent answering already answered questions
+        if current_q['answered']:
+            await query.answer("This question has already been answered!")
+            return
+
+        selected_answer = current_q['answers'][answer_index]
         
         # Check if answer is correct
         if selected_answer == current_q['correct_answer']:
@@ -284,19 +377,60 @@ class TriviaBot:
             
             response_text = (
                 f"✅ Correct! The answer is: {current_q['correct_answer']}\n"
-                f"Current Score: {game_state['score']}/{game_state['current_question_index'] + 1}"
+                f"Current Score: {game_state['score']}/{question_index + 1}"
             )
         else:
             response_text = (
                 f"❌ Wrong! The correct answer is: {current_q['correct_answer']}\n"
-                f"Current Score: {game_state['score']}/{game_state['current_question_index'] + 1}"
+                f"Current Score: {game_state['score']}/{question_index + 1}"
             )
+
+        # Mark question as answered
+        current_q['answered'] = True
+
+        # Remove the current question from unanswered questions
+        if question_index in game_state['unanswered_questions']:
+            game_state['unanswered_questions'].remove(question_index)
+
+        # Send a new message as a reply to the original message
+        await query.message.reply_text(response_text)
+
+        # Move to next question
+        await self.send_next_question(update, context)
+
+    async def handle_question_timeout(self, update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int) -> None:
+        """Handle question timeout."""
+        if user_id not in self.current_games:
+            return
+
+        game_state = self.current_games[user_id]
+        current_q = game_state['questions'][game_state['current_question_index']]
+
+        # Prevent re-answering timed out questions
+        if current_q['answered']:
+            return
+
+        # Send timeout message
+        if update.callback_query:
+            message_method = update.callback_query.message.reply_text
+        else:
+            message_method = update.message.reply_text
+
+        await message_method(
+            f"⏰ Time's up! You didn't answer in time.\n"
+            f"The correct answer was: {current_q['correct_answer']}\n"
+            f"Current Score: {game_state['score']}/{game_state['current_question_index'] + 1}"
+        )
+
+        # Mark question as answered
+        current_q['answered'] = True
+
+        # Remove the current question from unanswered questions
+        if game_state['current_question_index'] in game_state['unanswered_questions']:
+            game_state['unanswered_questions'].remove(game_state['current_question_index'])
 
         # Move to next question
         game_state['current_question_index'] += 1
-
-        # Edit the original message with result
-        await query.edit_message_text(response_text)
 
         # Send next question or end game
         await self.send_next_question(update, context)
@@ -311,6 +445,17 @@ class TriviaBot:
 
         game_state = self.current_games[user_id]
 
+        # Determine best score for this configuration
+        best_score_key = self.get_best_score_key(game_state)
+        previous_best_score = self.best_scores.get(best_score_key, 0)
+        
+        # Update best score if current score is higher
+        congratulations = ""
+        if game_state['score'] > previous_best_score:
+            self.best_scores[best_score_key] = game_state['score']
+            self.save_best_scores()
+            congratulations = "🎉 New Personal Best! 🎉\n"
+
         # Determine the appropriate way to send the message
         message_method = (update.callback_query.message.reply_text 
                           if update.callback_query 
@@ -318,7 +463,9 @@ class TriviaBot:
 
         await message_method(
             f"🏁 Game Over!\n"
+            f"{congratulations}"
             f"Final Score: {game_state['score']}/{game_state['game_length']}\n"
+            f"Best Score: {self.best_scores.get(best_score_key, game_state['score'])}\n"
             f"Difficulty: {game_state['difficulty'].capitalize()}\n"
             f"Category: {self.categories.get(game_state['category'], 'Unknown')}"
         )
