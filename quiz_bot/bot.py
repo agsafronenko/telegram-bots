@@ -1,7 +1,6 @@
 import os
 import random
 import html
-import asyncio
 import logging
 from typing import Dict, List, Any
 
@@ -38,37 +37,62 @@ class TriviaBot:
     def fetch_trivia_categories(self) -> Dict[int, str]:
         """Fetch available trivia categories from Open Trivia API."""
         url = "https://opentdb.com/api_category.php"
-        response = requests.get(url)
-        
-        if response.status_code == 200:
-            categories = {
-                cat['id']: cat['name'] 
-                for cat in response.json()['trivia_categories']
-            }
-            return categories
+        try:
+            response = requests.get(url, timeout=10)
+            
+            if response.status_code == 200:
+                categories = {
+                    cat['id']: cat['name'] 
+                    for cat in response.json()['trivia_categories']
+                }
+                return categories
+        except Exception as e:
+            logger.error(f"Error fetching categories: {e}")
         return {}
 
-    def fetch_trivia_question(self, difficulty: str, category: int) -> Dict[str, Any]:
-        """Fetch a trivia question from Open Trivia API."""
-        url = f"https://opentdb.com/api.php?amount=1&difficulty={difficulty}&category={category}&type=multiple"
-        response = requests.get(url)
+    def fetch_trivia_questions(self, difficulty: str, category: int, amount: int) -> List[Dict[str, Any]]:
+        """
+        Fetch multiple trivia questions from Open Trivia API.
         
-        if response.status_code == 200:
-            data = response.json()
-            if data['response_code'] == 0:
-                question = data['results'][0]
+        Args:
+            difficulty (str): Question difficulty level
+            category (int): Trivia category ID
+            amount (int): Number of questions to fetch
+        
+        Returns:
+            List[Dict[str, Any]]: List of parsed question data
+        """
+        url = f"https://opentdb.com/api.php?amount={amount}&difficulty={difficulty}&category={category}&type=multiple"
+        
+        try:
+            response = requests.get(url, timeout=10)
+            
+            if response.status_code == 200:
+                data = response.json()
                 
-                # Combine correct and incorrect answers
-                answers = question['incorrect_answers'] + [question['correct_answer']]
-                random.shuffle(answers)
+                # Check response code
+                if data['response_code'] == 0:
+                    processed_questions = []
+                    for question in data['results']:
+                        # Combine correct and incorrect answers
+                        answers = question['incorrect_answers'] + [question['correct_answer']]
+                        random.shuffle(answers)
+                        
+                        processed_questions.append({
+                            'question': html.unescape(question['question']),
+                            'answers': [html.unescape(ans) for ans in answers],
+                            'correct_answer': html.unescape(question['correct_answer']),
+                            'category': html.unescape(question['category'])
+                        })
+                    
+                    return processed_questions
                 
-                return {
-                    'question': html.unescape(question['question']),
-                    'answers': [html.unescape(ans) for ans in answers],
-                    'correct_answer': html.unescape(question['correct_answer']),
-                    'category': html.unescape(question['category'])
-                }
-        return None
+                logger.warning(f"API response code: {data['response_code']}")
+        
+        except Exception as e:
+            logger.error(f"Error fetching questions: {e}")
+        
+        return []
 
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Start the quiz configuration process."""
@@ -157,13 +181,28 @@ class TriviaBot:
         game_length = int(query.data.split('_')[1])
         context.user_data['game_length'] = game_length
 
-        # Initialize game state
+        # Fetch all questions at once
         user_id = query.from_user.id
+        difficulty = context.user_data['difficulty']
+        category = context.user_data['category']
+
+        # Fetch all questions for the game
+        questions = self.fetch_trivia_questions(difficulty, category, game_length)
+
+        # Check if we have enough questions
+        if len(questions) < game_length:
+            await query.message.reply_text(
+                "Sorry, couldn't fetch enough questions. Please try a different category or difficulty."
+            )
+            return ConversationHandler.END
+
+        # Initialize game state
         self.current_games[user_id] = {
-            'difficulty': context.user_data['difficulty'],
-            'category': context.user_data['category'],
+            'difficulty': difficulty,
+            'category': category,
             'game_length': game_length,
-            'current_question': 0,
+            'questions': questions,
+            'current_question_index': 0,
             'score': 0
         }
 
@@ -191,82 +230,33 @@ class TriviaBot:
         game_state = self.current_games[user_id]
 
         # Check if game is complete
-        if game_state['current_question'] >= game_state['game_length']:
+        if game_state['current_question_index'] >= game_state['game_length']:
             await self.end_game(update, context)
             return
 
-        # Fetch a new question
-        question_data = None
-        attempts = 0
-        while not question_data and attempts < 3:
-            question_data = self.fetch_trivia_question(
-                game_state['difficulty'], 
-                game_state['category']
-            )
-            attempts += 1
-            
-            if not question_data:
-                # Wait a bit before retrying
-                await asyncio.sleep(1)
-
-        # If still no question after multiple attempts
-        if not question_data:
-            # Try a different category or difficulty
-            alternative_categories = list(self.categories.keys())
-            alternative_difficulties = ['easy', 'medium', 'hard']
-            
-            for alt_category in alternative_categories:
-                for alt_difficulty in alternative_difficulties:
-                    question_data = self.fetch_trivia_question(
-                        alt_difficulty, 
-                        alt_category
-                    )
-                    if question_data:
-                        break
-                if question_data:
-                    break
-
-        # Final check for question data
-        if not question_data:
-            if update.callback_query:
-                await update.callback_query.message.reply_text(
-                    "Sorry, unable to fetch a question after multiple attempts. "
-                    "Please try starting a new quiz."
-                )
-            elif update.message:
-                await update.message.reply_text(
-                    "Sorry, unable to fetch a question after multiple attempts. "
-                    "Please try starting a new quiz."
-                )
-            
-            # End the current game
-            await self.end_game(update, context)
-            return
+        # Get current question
+        current_q = game_state['questions'][game_state['current_question_index']]
 
         # Create inline keyboard with answer options
         keyboard = [
             [InlineKeyboardButton(answer, callback_data=str(i)) 
-            for i, answer in enumerate(question_data['answers'])]
+             for i, answer in enumerate(current_q['answers'])]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-
-        # Send question
-        game_state['current_question'] += 1
-        game_state['current_question_data'] = question_data
 
         # Determine the appropriate way to send the message
         if update.callback_query:
             message = await update.callback_query.message.reply_text(
-                f"Question {game_state['current_question']}/{game_state['game_length']}\n"
-                f"Category: {question_data['category']}\n\n"
-                f"{question_data['question']}",
+                f"Question {game_state['current_question_index'] + 1}/{game_state['game_length']}\n"
+                f"Category: {current_q['category']}\n\n"
+                f"{current_q['question']}",
                 reply_markup=reply_markup
             )
         elif update.message:
             message = await update.message.reply_text(
-                f"Question {game_state['current_question']}/{game_state['game_length']}\n"
-                f"Category: {question_data['category']}\n\n"
-                f"{question_data['question']}",
+                f"Question {game_state['current_question_index'] + 1}/{game_state['game_length']}\n"
+                f"Category: {current_q['category']}\n\n"
+                f"{current_q['question']}",
                 reply_markup=reply_markup
             )
 
@@ -284,7 +274,7 @@ class TriviaBot:
 
         # Get current game state and question details
         game_state = self.current_games[user_id]
-        current_q = game_state['current_question_data']
+        current_q = game_state['questions'][game_state['current_question_index']]
         selected_answer = current_q['answers'][int(query.data)]
         
         # Check if answer is correct
@@ -294,13 +284,16 @@ class TriviaBot:
             
             response_text = (
                 f"✅ Correct! The answer is: {current_q['correct_answer']}\n"
-                f"Current Score: {game_state['score']}/{game_state['current_question']}"
+                f"Current Score: {game_state['score']}/{game_state['current_question_index'] + 1}"
             )
         else:
             response_text = (
                 f"❌ Wrong! The correct answer is: {current_q['correct_answer']}\n"
-                f"Current Score: {game_state['score']}/{game_state['current_question']}"
+                f"Current Score: {game_state['score']}/{game_state['current_question_index'] + 1}"
             )
+
+        # Move to next question
+        game_state['current_question_index'] += 1
 
         # Edit the original message with result
         await query.edit_message_text(response_text)
@@ -310,10 +303,20 @@ class TriviaBot:
 
     async def end_game(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """End the game and show final score."""
-        user_id = update.effective_user.id
+        # Correctly extract user ID
+        if update.callback_query:
+            user_id = update.callback_query.from_user.id
+        else:
+            user_id = update.effective_user.id
+
         game_state = self.current_games[user_id]
 
-        await update.message.reply_text(
+        # Determine the appropriate way to send the message
+        message_method = (update.callback_query.message.reply_text 
+                          if update.callback_query 
+                          else update.message.reply_text)
+
+        await message_method(
             f"🏁 Game Over!\n"
             f"Final Score: {game_state['score']}/{game_state['game_length']}\n"
             f"Difficulty: {game_state['difficulty'].capitalize()}\n"
