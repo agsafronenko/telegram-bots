@@ -336,20 +336,47 @@ async def handle_end_game(update: Update, context: ContextTypes.DEFAULT_TYPE, bo
     logger.info(f"Ending game for user {user_id}. Final Score: {game_state['score']}/{game_state['game_length']}")
 
     # --- Best Score Logic ---
-    best_score_key = utils.get_best_score_key(
+    # --- Best Score Logic (USER-SPECIFIC) ---
+    current_score = game_state['score']
+    game_key = utils.get_best_score_key(
         game_state['difficulty'], game_state['category'], game_state['game_length']
     )
-    previous_best_score = bot.best_scores.get(best_score_key, 0)
-    current_score = game_state['score']
+
+    # Get the dictionary of scores for *this specific user*
+    # If the user isn't in best_scores yet, default to an empty dictionary
+    user_best_scores = bot.best_scores.get(user_id, {})
+
+    # Get the previous best score for *this user* and *this game configuration*
+    # If no previous score exists for this config, default to 0
+    previous_best_score = user_best_scores.get(game_key, 0)
+
+
+
+
+
+    # best_score_key = utils.get_best_score_key(
+    #     game_state['difficulty'], game_state['category'], game_state['game_length']
+    # )
+    # previous_best_score = bot.best_scores.get(best_score_key, 0)
+    # current_score = game_state['score']
     
     congratulations = ""
+    new_best = False
     if current_score > previous_best_score:
-        bot.best_scores[best_score_key] = current_score
-        utils.save_best_scores(bot.best_scores) # Persist the new best score
+        # Ensure the user's entry exists in the main dictionary
+        if user_id not in bot.best_scores:
+            bot.best_scores[user_id] = {}
+        # Update the score for this user and game configuration
+        bot.best_scores[user_id][game_key] = current_score
+        new_best = True
+        # Pass the entire best_scores dictionary (now potentially updated) to save
+        utils.save_best_scores(bot.best_scores, bot.best_scores_file)
         congratulations = f"🎉 New Personal Best for this setup ({current_score} points)! 🎉\n"
-        logger.info(f"User {user_id} achieved new best score for key '{best_score_key}': {current_score}")
-    
-    best_score_display = bot.best_scores.get(best_score_key, current_score) # Show updated score
+        logger.info(f"User {user_id} achieved new best score for key '{game_key}': {current_score}")
+
+    # Determine the score to display (either the new best or the existing one)
+    # Safely get the potentially updated score
+    best_score_display = bot.best_scores.get(user_id, {}).get(game_key, 0)
 
     # --- Send Final Message ---
     final_text = (

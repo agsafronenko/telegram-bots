@@ -26,7 +26,7 @@ class TriviaBot:
         # Stores category ID -> category name mapping
         self.categories: Dict[int, str] = {} 
         # Stores best scores, keyed by utils.get_best_score_key()
-        self.best_scores: Dict[str, int] = {} 
+        self.best_scores: Dict[int, Dict[str, int]] = {} 
         
         # --- Configuration ---
         self.answer_timeout = config.ANSWER_TIMEOUT
@@ -45,7 +45,7 @@ class TriviaBot:
              logger.info(f"Loaded {len(self.categories)} categories.")
              
         self.best_scores = utils.load_best_scores()
-        logger.info(f"Loaded {len(self.best_scores)} best score records from '{self.best_scores_file}'.")
+        logger.info(f"Loaded best score records for {len(self.best_scores)} users from '{self.best_scores_file}'.")
 
     # --- Method Wrappers for Handlers ---
 
